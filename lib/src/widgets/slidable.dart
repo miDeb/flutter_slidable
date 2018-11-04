@@ -823,10 +823,12 @@ class SlidableState extends State<Slidable>
     super.initState();
     _overallMoveController =
         new AnimationController(duration: widget.movementDuration, vsync: this)
-          ..addStatusListener(_handleDismissStatusChanged);
+          ..addStatusListener(_handleDismissStatusChanged)
+          ..addListener(_handleOverallPositionChanged);
     _actionsMoveController =
         new AnimationController(duration: widget.movementDuration, vsync: this)
           ..addStatusListener(_handleShowAllActionsStatusChanged);
+    _renderingMode.addListener(() => setState(() {}));
   }
 
   AnimationController _overallMoveController;
@@ -841,8 +843,9 @@ class SlidableState extends State<Slidable>
   double _dragExtent = 0.0;
   double get dragSign => _dragExtent.sign == 0 ? 1.0 : _dragExtent.sign;
 
-  SlidableRenderingMode _renderingMode = SlidableRenderingMode.none;
-  SlidableRenderingMode get renderingMode => _renderingMode;
+  ValueNotifier<SlidableRenderingMode> _renderingMode =
+      ValueNotifier(SlidableRenderingMode.none);
+  SlidableRenderingMode get renderingMode => _renderingMode.value;
 
   ScrollPosition _scrollPosition;
   bool _dragUnderway = false;
@@ -928,7 +931,7 @@ class SlidableState extends State<Slidable>
     super.dispose();
   }
 
-  void open() {
+  void _open() {
     _actionsMoveController.fling(velocity: 1.0);
     _overallMoveController.animateTo(
       totalActionsExtent,
@@ -937,13 +940,21 @@ class SlidableState extends State<Slidable>
     );
   }
 
+  void open({SlideActionType actionType}) {
+    actionType ??= this.actionType;
+    widget.controller?.activeState = this;
+    if (actionType != this.actionType)
+      _dragExtent = actionType == SlideActionType.primary ? 0.1 : -0.1;
+    _open();
+  }
+
   void close() {
     _flingAnimationControllers();
     widget.controller?.activeState = null;
   }
 
   void _flingAnimationControllers() {
-    if (!_dismissing) {
+    if (!_dismissing && renderingMode != SlidableRenderingMode.none) {
       _actionsMoveController.fling(velocity: -1.0);
       _overallMoveController.fling(velocity: -1.0);
     }
@@ -954,9 +965,7 @@ class SlidableState extends State<Slidable>
       _dismissing = true;
       actionType ??= this.actionType;
       if (actionType != this.actionType) {
-        setState(() {
-          _dragExtent = actionType == SlideActionType.primary ? 1.0 : -1.0;
-        });
+        _dragExtent = actionType == SlideActionType.primary ? 1.0 : -1.0;
       }
 
       _overallMoveController.fling(velocity: 1.0);
@@ -994,13 +1003,8 @@ class SlidableState extends State<Slidable>
 
     final double delta = details.primaryDelta;
     _dragExtent += delta;
-    setState(() {
-      _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
-      _actionsMoveController.value = _dragExtent.abs() / _actionsDragAxisExtent;
-      _renderingMode = _overallMoveController.value > totalActionsExtent
-          ? SlidableRenderingMode.dismiss
-          : SlidableRenderingMode.slide;
-    });
+    _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
+    _actionsMoveController.value = _dragExtent.abs() / _actionsDragAxisExtent;
   }
 
   void _handleDragEnd(DragEndDetails details) {
@@ -1018,24 +1022,29 @@ class SlidableState extends State<Slidable>
       if (overallMoveAnimation.value >= dismissThreshold) {
         dismiss();
       } else {
-        open();
+        _open();
       }
     } else if (actionsMoveAnimation.value >= widget.showAllActionsThreshold ||
         (shouldOpen && fast)) {
-      open();
+      _open();
     } else {
       close();
     }
   }
 
-  void _handleShowAllActionsStatusChanged(AnimationStatus status) {
-    // Make sure to rebuild a last time, otherwise the slide action could
-    // be scrambled.
-    if (status == AnimationStatus.completed ||
-        status == AnimationStatus.dismissed) {
-      setState(() {});
+  void _handleOverallPositionChanged() {
+    double value = _overallMoveController.value;
+    if (value == .0)
+      _renderingMode.value = SlidableRenderingMode.none;
+    else if (value <= totalActionsExtent) {
+      _renderingMode.value = SlidableRenderingMode.slide;
+    } else if (value < _overallMoveController.upperBound) {
+      print("dismiss $value");
+      _renderingMode.value = SlidableRenderingMode.dismiss;
     }
+  }
 
+  void _handleShowAllActionsStatusChanged(AnimationStatus status) {
     updateKeepAlive();
   }
 
@@ -1052,7 +1061,7 @@ class SlidableState extends State<Slidable>
           if (widget.slideToDismissDelegate?.closeOnCanceled == true) {
             close();
           } else {
-            open();
+            _open();
           }
         }
       }
@@ -1085,13 +1094,11 @@ class SlidableState extends State<Slidable>
         ..addListener(_handleResizeProgressChanged)
         ..addStatusListener((AnimationStatus status) => updateKeepAlive());
       _resizeController.forward();
-      setState(() {
-        _renderingMode = SlidableRenderingMode.resize;
-        _sizePriorToCollapse = context.size;
-        _resizeAnimation = new Tween<double>(begin: 1.0, end: 0.0).animate(
-            new CurvedAnimation(
-                parent: _resizeController, curve: _kResizeTimeCurve));
-      });
+      _sizePriorToCollapse = context.size;
+      _resizeAnimation = new Tween<double>(begin: 1.0, end: 0.0).animate(
+          new CurvedAnimation(
+              parent: _resizeController, curve: _kResizeTimeCurve));
+      _renderingMode.value = SlidableRenderingMode.resize;
     }
   }
 
@@ -1109,7 +1116,7 @@ class SlidableState extends State<Slidable>
   @override
   Widget build(BuildContext context) {
     super.build(context); // See AutomaticKeepAliveClientMixin.
-
+    
     if (!widget.enabled ||
         ((widget.actionDelegate == null ||
                 widget.actionDelegate.actionCount == 0) &&
