@@ -943,8 +943,25 @@ class SlidableState extends State<Slidable>
   void open({SlideActionType actionType}) {
     actionType ??= this.actionType;
     widget.controller?.activeState = this;
-    if (actionType != this.actionType)
+    if (actionType != this.actionType) {
+      //first close it
+      _flingAnimationControllers();
+      if (_overallMoveController.isAnimating) {
+        // we need to wait
+        AnimationStatusListener listener;
+        listener = (status) {
+          // dismissed means closed
+          if (status == AnimationStatus.dismissed) {
+            _dragExtent = actionType == SlideActionType.primary ? 0.1 : -0.1;
+            _open();
+          }
+          _overallMoveController.removeStatusListener(listener);
+        };
+        _overallMoveController.addStatusListener(listener);
+        return; //our listener will do the work
+      }
       _dragExtent = actionType == SlideActionType.primary ? 0.1 : -0.1;
+    }
     _open();
   }
 
@@ -1001,8 +1018,18 @@ class SlidableState extends State<Slidable>
       return;
     }
 
-    final double delta = details.primaryDelta;
+    double delta = details.primaryDelta;
+    //if the dragSign will change, first close
+    if ((_dragExtent + delta).sign != _dragExtent.sign && renderingMode != SlidableRenderingMode.none) {
+      print("$delta $_dragExtent");
+      delta += _dragExtent;
+      _dragExtent = 0;
+      _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
+      _actionsMoveController.value = _dragExtent.abs() / _actionsDragAxisExtent;
+    }
     _dragExtent += delta;
+    //don't divide by zero
+    if (_actionsDragAxisExtent == 0) return;
     _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
     _actionsMoveController.value = _dragExtent.abs() / _actionsDragAxisExtent;
   }
@@ -1039,7 +1066,6 @@ class SlidableState extends State<Slidable>
     else if (value <= totalActionsExtent) {
       _renderingMode.value = SlidableRenderingMode.slide;
     } else if (value < _overallMoveController.upperBound) {
-      print("dismiss $value");
       _renderingMode.value = SlidableRenderingMode.dismiss;
     }
   }
@@ -1116,7 +1142,7 @@ class SlidableState extends State<Slidable>
   @override
   Widget build(BuildContext context) {
     super.build(context); // See AutomaticKeepAliveClientMixin.
-    
+  
     if (!widget.enabled ||
         ((widget.actionDelegate == null ||
                 widget.actionDelegate.actionCount == 0) &&
