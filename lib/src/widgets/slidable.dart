@@ -1021,7 +1021,6 @@ class SlidableState extends State<Slidable>
     double delta = details.primaryDelta;
     //if the dragSign will change, first close
     if ((_dragExtent + delta).sign != _dragExtent.sign && renderingMode != SlidableRenderingMode.none) {
-      print("$delta $_dragExtent");
       delta += _dragExtent;
       _dragExtent = 0;
       _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
