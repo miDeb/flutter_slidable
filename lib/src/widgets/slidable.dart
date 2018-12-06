@@ -1020,7 +1020,8 @@ class SlidableState extends State<Slidable>
 
     double delta = details.primaryDelta;
     //if the dragSign will change, first close
-    if ((_dragExtent + delta).sign != _dragExtent.sign && renderingMode != SlidableRenderingMode.none) {
+    if ((_dragExtent + delta).sign != _dragExtent.sign &&
+        renderingMode != SlidableRenderingMode.none) {
       delta += _dragExtent;
       _dragExtent = 0;
       _overallMoveController.value = _dragExtent.abs() / _overallDragAxisExtent;
@@ -1040,7 +1041,7 @@ class SlidableState extends State<Slidable>
 
     _dragUnderway = false;
     final double velocity = details.primaryVelocity;
-    final bool shouldOpen = velocity.sign == _dragExtent.sign;
+    final bool shouldOpen = velocity.sign == _dragExtent.sign && _actionsDragAxisExtent != 0;
     final bool fast = velocity.abs() > widget.delegate.fastThreshold;
 
     if (dismissible && overallMoveAnimation.value > totalActionsExtent) {
@@ -1141,7 +1142,7 @@ class SlidableState extends State<Slidable>
   @override
   Widget build(BuildContext context) {
     super.build(context); // See AutomaticKeepAliveClientMixin.
-  
+
     if (!widget.enabled ||
         ((widget.actionDelegate == null ||
                 widget.actionDelegate.actionCount == 0) &&
